@@ -1,8 +1,4 @@
 (defpackage :json-schema.validators
-  (:local-nicknames (:formats :json-schema.formats)
-                    (:types :json-schema.types)
-                    (:utils :json-schema.utils)
-                    (:reference :json-schema.reference))
   (:use :cl :alexandria)
   (:export #:validate
            #:validation-failed-error))
@@ -69,11 +65,11 @@
 
   (flet ((type-check (type)
            (ecase *schema-version*
-             (:draft2019-09 (types:draft2019-09 data type))
-             (:draft7       (types:draft7       data type))
-             (:draft6       (types:draft6       data type))
-             (:draft4       (types:draft4       data type))
-             (:draft3       (types:draft3       data type)))))
+             (:draft2019-09 (json-schema.types:draft2019-09 data type))
+             (:draft7       (json-schema.types:draft7       data type))
+             (:draft6       (json-schema.types:draft6       data type))
+             (:draft4       (json-schema.types:draft4       data type))
+             (:draft3       (json-schema.types:draft3       data type)))))
 
     (if (listp type)
         (some #'type-check type)
@@ -90,7 +86,7 @@
 
   (let ((*schema-version* schema-version))
     (cond
-      ((typep schema 'utils:json-boolean)
+      ((typep schema 'json-schema.utils:json-boolean)
        (if (eq schema :true)
            nil
            (list
@@ -98,21 +94,21 @@
                            :property-name ""
                            :error-message "Schema :false is always false."))))
 
-      ((utils:empty-object-p schema)
+      ((json-schema.utils:empty-object-p schema)
        nil)
 
-      ((and (typep schema 'utils:object)
-            (nth-value 1 (funcall (symbol-function (reference:get-id-fun-for-draft schema-version))
+      ((and (typep schema 'json-schema.utils:object)
+            (nth-value 1 (funcall (symbol-function (json-schema.reference:get-id-fun-for-draft schema-version))
                                   schema))
             (not ignore-id))
 
-       (reference:with-pushed-id ((funcall (symbol-function (reference:get-id-fun-for-draft schema-version))
+       (json-schema.reference:with-pushed-id ((funcall (symbol-function (json-schema.reference:get-id-fun-for-draft schema-version))
                                            schema))
          (validate schema data schema-version t)))
 
-      ((typep schema 'utils:object)
-       (loop for property in (utils:object-keys schema)
-             for value = (utils:object-get property schema)
+      ((typep schema 'json-schema.utils:object)
+       (loop for property in (json-schema.utils:object-keys schema)
+             for value = (json-schema.utils:object-get property schema)
              appending (handler-case (progn
                                        (ecase schema-version
                                          (:draft2019-09
@@ -150,23 +146,23 @@
 (defun check-dependencies (property-name dependencies data &key (allow-arrays t) (allow-objects t))
   (flet ((check-dependency (key dependency)
            (etypecase dependency
-             (utils:json-array
+             (json-schema.utils:json-array
               (unless allow-arrays
                 (make-instance 'validation-failed-error
                                :property-name property-name
                                :error-message (format nil "~d is not a valid dependency."
                                               dependency)))
               (unless (every (lambda (dependency-key)
-                               (nth-value 1 (utils:object-get dependency-key data)))
+                               (nth-value 1 (json-schema.utils:object-get dependency-key data)))
                              dependency)
                 (make-instance 'validation-failed-error
                                :property-name "dependencies"
                                :error-message (format nil "Field ~S depends on fields ~S, but some were missing."
                                                       key
-                                                      (utils:object-get key dependencies)))))
+                                                      (json-schema.utils:object-get key dependencies)))))
 
              ;; A subschema... 😭
-             (utils:object
+             (json-schema.utils:object
               (unless allow-objects
                 (make-instance 'validation-failed-error
                                :property-name property-name
@@ -179,7 +175,7 @@
                                                       key
                                                       dependency))))
              ;; maybe true, false, null
-             ((or utils:json-boolean utils:json-null)
+             ((or json-schema.utils:json-boolean json-schema.utils:json-null)
               (when-let ((validation-errors (validate dependency data *schema-version*)))
                 (make-instance 'validation-failed-error
                                :property-name property-name
@@ -188,10 +184,10 @@
                                                       dependency)))))))
 
     (remove-if #'null
-               (loop for key in (utils:object-keys dependencies)
-                     when (nth-value 1 (utils:object-get key data))
+               (loop for key in (json-schema.utils:object-keys dependencies)
+                     when (nth-value 1 (json-schema.utils:object-get key data))
                        ;; when the key is found in the data
-                       collecting (check-dependency key (utils:object-get key dependencies))))))
+                       collecting (check-dependency key (json-schema.utils:object-get key dependencies))))))
 
 
 ;;; Validation functions for individaul properties
@@ -204,7 +200,7 @@
 
 
 (defvfun $ref reference
-  (reference:with-resolved-ref (schema resolved-schema)
+  (json-schema.reference:with-resolved-ref (schema resolved-schema)
     (sub-errors (validate resolved-schema data)
                 "Error validating referred schema at ~S."
                 reference)))
@@ -213,10 +209,10 @@
 (defvfun additional-items additional-items
   (require-type "array")
 
-  (when (validate-type nil "object" (utils:object-get "items" schema (utils:make-empty-object)))
+  (when (validate-type nil "object" (json-schema.utils:object-get "items" schema (json-schema.utils:make-empty-object)))
     (return-from additional-items))
 
-  (let ((items-length (length (utils:object-get "items" schema))))
+  (let ((items-length (length (json-schema.utils:object-get "items" schema))))
     ;; There are only additional items if there are more than the items schema
     ;; mentions
     (when (> (length data) items-length)
@@ -230,20 +226,20 @@
   (require-type "object")
 
   (labels ((remove-pattern-property-keys (list)
-             (if-let ((pattern-properties (utils:object-get "patternProperties" schema)))
+             (if-let ((pattern-properties (json-schema.utils:object-get "patternProperties" schema)))
 
                (remove-if (lambda (key)
                             (some (lambda (pattern) (ppcre:scan pattern key))
-                                  (utils:object-keys pattern-properties)))
+                                  (json-schema.utils:object-keys pattern-properties)))
                           list)
                list)))
 
     (cond
       ((eq value :false)
-       (let* ((schema-properties (when-let ((properties (utils:object-get "properties" schema)))
-                                   (utils:object-keys properties)))
+       (let* ((schema-properties (when-let ((properties (json-schema.utils:object-get "properties" schema)))
+                                   (json-schema.utils:object-keys properties)))
 
-              (data-properties (utils:object-keys data))
+              (data-properties (json-schema.utils:object-keys data))
 
               ;; pattern properties don't count as additional
               (additional-properties (remove-pattern-property-keys
@@ -255,11 +251,11 @@
                     "~S contains more properties (~S) than specified in the schema ~S"
                     data-properties additional-properties schema-properties)))
 
-      ((typep value 'utils:object)
-       (let* ((schema-properties (when-let ((properties (utils:object-get "properties" schema)))
-                                   (utils:object-keys properties)))
+      ((typep value 'json-schema.utils:object)
+       (let* ((schema-properties (when-let ((properties (json-schema.utils:object-get "properties" schema)))
+                                   (json-schema.utils:object-keys properties)))
 
-              (data-properties (utils:object-keys data))
+              (data-properties (json-schema.utils:object-keys data))
 
               ;; pattern properties don't count as additional
               (additional-properties (remove-pattern-property-keys
@@ -267,7 +263,7 @@
                                                       schema-properties
                                                       :test #'string=)))
               (errors (loop for property in additional-properties
-                            appending (validate value (utils:object-get property data)))))
+                            appending (validate value (json-schema.utils:object-get property data)))))
          (sub-errors errors
                      "There were errors validating additional properties."))))))
 
@@ -299,7 +295,7 @@
 
 
 (defvfun const const
-  (condition (utils:json-equal-p data const)
+  (condition (json-schema.utils:json-equal-p data const)
              "~a is not equal to constant ~a."
              data const))
 
@@ -345,7 +341,7 @@
                 "There were failed dependencies.")))
 
 (defvfun enum members
-  (condition (member data members :test #'utils:json-equal-p)
+  (condition (member data members :test #'json-schema.utils:json-equal-p)
              "~a isn't one of ~{~a~^, ~}."
              data members))
 
@@ -370,11 +366,11 @@
 
   (flet ((validate ()
            (ecase *schema-version*
-             (:draft2019-09 (formats:draft2019-09 data type))
-             (:draft7       (formats:draft7 data type))
-             (:draft6       (formats:draft6 data type))
-             (:draft4       (formats:draft4 data type))
-             (:draft3       (formats:draft3 data type)))))
+             (:draft2019-09 (json-schema.formats:draft2019-09 data type))
+             (:draft7       (json-schema.formats:draft7 data type))
+             (:draft6       (json-schema.formats:draft6 data type))
+             (:draft4       (json-schema.formats:draft4 data type))
+             (:draft3       (json-schema.formats:draft3 data type)))))
 
     (condition (validate)
                "~a is not of format ~a."
@@ -383,10 +379,10 @@
 
 (defvfun if-validator condition-schema
   (if (null (validate condition-schema data))
-      (when-let ((then-schema (utils:object-get "then" schema)))
+      (when-let ((then-schema (json-schema.utils:object-get "then" schema)))
         (sub-errors (validate then-schema data)
                     "Errors occurred validating then clause."))
-      (when-let ((else-schema (utils:object-get "else" schema)))
+      (when-let ((else-schema (json-schema.utils:object-get "else" schema)))
         (sub-errors (validate else-schema data)
                     "Errors occurred validating else clause."))))
 
@@ -394,7 +390,7 @@
 (defvfun items items
   (require-type "array")
 
-  (if (typep items 'utils:json-array)
+  (if (typep items 'json-schema.utils:json-array)
       ;; There are schemas in the items property
       (sub-errors (loop for sub-schema in items
                         for item in data
@@ -408,7 +404,7 @@
 
 
 (defvfun type-validator type
-  (condition (typep type '(or utils:json-array string))
+  (condition (typep type '(or json-schema.utils:json-array string))
              "~S is an invalid type specifier."
              type)
   (condition (validate-type nil type data)
@@ -427,7 +423,7 @@
 (defvfun maximum-draft4 maximum
   (require-type "number")
 
-  (let ((exclusive-p (eq :true (utils:object-get "exclusiveMaximum" schema :false))))
+  (let ((exclusive-p (eq :true (json-schema.utils:object-get "exclusiveMaximum" schema :false))))
     (if exclusive-p
         (condition (< data maximum)
                    "~d must be strictly less than ~d."
@@ -465,7 +461,7 @@
 (defvfun minimum-draft4 minimum
   (require-type "number")
 
-  (let ((exclusive-p (eq :true (utils:object-get "exclusiveMaximum" schema :false))))
+  (let ((exclusive-p (eq :true (json-schema.utils:object-get "exclusiveMaximum" schema :false))))
     (if exclusive-p
         (condition (> data minimum)
                    "~d must be strictly greater than ~d."
@@ -493,7 +489,7 @@
 (defvfun min-properties count
   (require-type "object")
 
-  (condition (>= (length (utils:object-keys data)) count)
+  (condition (>= (length (json-schema.utils:object-keys data)) count)
              "~a must have at least ~d properties."
              data count))
 
@@ -501,7 +497,7 @@
 (defvfun max-properties count
   (require-type "object")
 
-  (condition (<= (length (utils:object-keys data)) count)
+  (condition (<= (length (json-schema.utils:object-keys data)) count)
              "~a must have at most ~d properties."
              data count))
 
@@ -547,16 +543,16 @@
   (require-type "object")
 
   (flet ((test-key (key)
-           (loop with property-data = (utils:object-get key data)
-                 for pattern-property in (utils:object-keys patterns)
-                 for property-schema = (utils:object-get pattern-property patterns)
+           (loop with property-data = (json-schema.utils:object-get key data)
+                 for pattern-property in (json-schema.utils:object-keys patterns)
+                 for property-schema = (json-schema.utils:object-get pattern-property patterns)
 
                  when (ppcre:scan pattern-property key)
                    appending (handler-case (validate property-schema property-data)
                                (validation-failed-error (error)
                                  error)))))
 
-    (let ((errors (loop for data-property in (utils:object-keys data)
+    (let ((errors (loop for data-property in (json-schema.utils:object-keys data)
                         appending (test-key data-property))))
 
       (sub-errors errors
@@ -566,9 +562,9 @@
 (defvfun properties properties
   (require-type "object")
 
-  (let ((errors (loop for property in (utils:object-keys properties)
-                      for property-schema = (utils:object-get property properties)
-                      for (property-data found-p) = (multiple-value-list (utils:object-get property data))
+  (let ((errors (loop for property in (json-schema.utils:object-keys properties)
+                      for property-schema = (json-schema.utils:object-get property properties)
+                      for (property-data found-p) = (multiple-value-list (json-schema.utils:object-get property data))
 
                       when found-p
                         appending (validate property-schema property-data))))
@@ -580,7 +576,7 @@
 (defvfun property-names names-schema
   (require-type "object")
 
-  (sub-errors (loop for property in (utils:object-keys data)
+  (sub-errors (loop for property in (json-schema.utils:object-keys data)
                     appending (validate names-schema property))
               "Errors validating propertyNames."))
 
@@ -597,7 +593,7 @@
   (require-type "object")
 
   (let ((missing-keys (set-difference required-fields
-                                      (utils:object-keys data)
+                                      (json-schema.utils:object-keys data)
                                       :test #'string=)))
 
     (condition (null missing-keys)
@@ -609,8 +605,8 @@
   (require-type "object")
 
   (let ((unevaluated-property-names
-          (set-difference (utils:object-keys data)
-                          (utils:object-keys (utils:object-get "properties" schema (utils:make-empty-object)))
+          (set-difference (json-schema.utils:object-keys data)
+                          (json-schema.utils:object-keys (json-schema.utils:object-get "properties" schema (json-schema.utils:make-empty-object)))
                           :test 'equal)))
 
     (cond
@@ -619,9 +615,9 @@
                   "No unevaluated properties allowed, but found ~S."
                   unevaluated-property-names))
 
-      ((typep unevaluated-properties 'utils:object)
+      ((typep unevaluated-properties 'json-schema.utils:object)
        (let ((errors (loop for property in unevaluated-property-names
-                           for (property-data found-p) = (multiple-value-list (utils:object-get property data))
+                           for (property-data found-p) = (multiple-value-list (json-schema.utils:object-get property data))
 
                            when found-p
                              appending (validate unevaluated-properties
@@ -636,7 +632,7 @@
 
   (when (eq unique :true)
     (condition (= (length data)
-                  (length (remove-duplicates data :test 'utils:json-equal-p)))
+                  (length (remove-duplicates data :test 'json-schema.utils:json-equal-p)))
                "Not all items in ~{~a~^, ~} are unique."
                data)))
 

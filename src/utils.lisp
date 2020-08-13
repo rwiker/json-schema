@@ -1,5 +1,4 @@
 (defpackage :json-schema.utils
-  (:local-nicknames (:json :st-json))
   (:use :cl :alexandria)
   (:export #:object-equal-p
            #:object-keys

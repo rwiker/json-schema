@@ -1,7 +1,5 @@
 (defpackage json-schema.reference
   (:use :cl :alexandria :cl-arrows)
-  (:local-nicknames (:utils :json-schema.utils)
-                    (:parse :json-schema.parse))
   (:export #:make-reference
            #:with-context
            #:push-context
@@ -101,17 +99,17 @@
 
 
 (defun default-id-fun (schema)
-  (if (typep schema 'utils:object)
-      (utils:object-get "$id" schema "")
+  (if (typep schema 'json-schema.utils:object)
+      (json-schema.utils:object-get "$id" schema "")
       (values "" nil)))
 
 
 (defun draft2019-09-id-fun (schema)
   "An id extraction function that also pays attention to $anchor properties which provide only location-independent references."
 
-  (if (typep schema 'utils:object)
-      (multiple-value-bind (id id-found-p) (utils:object-get "$id" schema)
-        (multiple-value-bind (anchor anchor-found-p) (utils:object-get "$anchor" schema)
+  (if (typep schema 'json-schema.utils:object)
+      (multiple-value-bind (id id-found-p) (json-schema.utils:object-get "$id" schema)
+        (multiple-value-bind (anchor anchor-found-p) (json-schema.utils:object-get "$anchor" schema)
           (values (quri:merge-uris (or (str:concat "#" anchor) "")
                                    (or id ""))
                   (or id-found-p anchor-found-p))))
@@ -119,8 +117,8 @@
 
 
 (defun draft4-id-fun (schema)
-  (if (typep schema 'utils:object)
-      (utils:object-get "id" schema "")
+  (if (typep schema 'json-schema.utils:object)
+      (json-schema.utils:object-get "id" schema "")
       (values "" nil)))
 
 
@@ -341,7 +339,7 @@
                      :connect-timeout 10
                      :force-binary t)
             babel:octets-to-string
-            parse:parse
+            json-schema.parse:parse
             store-schema))
     (usocket:connection-refused-error (error)
       (declare (ignore error))
@@ -361,7 +359,7 @@
 
 
 (defun get-ref (spec)
-  (utils:object-get "$ref" spec))
+  (json-schema.utils:object-get "$ref" spec))
 
 
 (defun ref-p (spec)
@@ -423,7 +421,7 @@
 
                                if (stringp component)
                                  do (progn
-                                      (setf spec (utils:object-get component spec))
+                                      (setf spec (json-schema.utils:object-get component spec))
                                       (when-let ((id (funcall *id-fun* spec)))
                                         ;; if we're in the same object as an id, leave that off
                                         (when rest
@@ -446,7 +444,7 @@
 (defun collect-subschemas (schema &key (id-fun *id-fun*) current-uri properties-p)
   "Collect all named subschemas into an alist of (name . schema-object)."
 
-  (when (typep schema 'utils:object)
+  (when (typep schema 'json-schema.utils:object)
     (multiple-value-bind (id found-p) (funcall id-fun schema)
       (let* ((current-uri (cond
                             ;; properties-p: we don't want to collect any "$id" properties
@@ -461,13 +459,13 @@
                              (quri:uri id))
                             (current-uri
                              current-uri)))
-             (subschema-ids (loop for key in (utils:object-keys schema)
-                                  for maybe-schema = (utils:object-get key schema)
+             (subschema-ids (loop for key in (json-schema.utils:object-keys schema)
+                                  for maybe-schema = (json-schema.utils:object-get key schema)
 
                                   appending (collect-subschemas maybe-schema
                                                                 :id-fun id-fun
                                                                 :current-uri current-uri
-                                                                :properties-p (utils:object-get "properties" schema)))))
+                                                                :properties-p (json-schema.utils:object-get "properties" schema)))))
         (if (and found-p (not properties-p))
             (list* (cons current-uri schema) subschema-ids)
             subschema-ids)))))

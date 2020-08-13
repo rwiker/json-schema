@@ -1,7 +1,6 @@
 (defpackage :json-schema.types
   (:use #:cl
         #:alexandria)
-  (:local-nicknames (:utils :json-schema.utils))
   (:export #:draft3
            #:draft4
            #:draft6
@@ -19,7 +18,7 @@
 
 
 (defun object-p (value)
-  (typep value 'utils:object))
+  (typep value 'json-schema.utils:object))
 
 
 (defun any-p (value)
